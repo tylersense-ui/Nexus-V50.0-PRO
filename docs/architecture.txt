@@ -1,0 +1,55 @@
+nexus-automation/
+├── README.md               
+├── boot.js                 # Point d'entrée unique (Optionnel)
+├── global-kill.js          # Arrêt d'urgence de tout le réseau
+├── Liste_Cannonique_augmentations_bitburner.txt        
+|
+├── core/                   # Cerveau du système
+│   ├── orchestrator.js     # Kernel : Root les serveurs et lance les modules
+|   ├── batcher.js          # Moteur Giga-Batcher HWGW (Cœur du profit)
+|   ├── dashboard.js        # Interface de contrôle v42.0 (Monitoring)
+│   ├── ram-manager.js      # (À venir) Optimisation de l'allocation
+│   └── port-handler.js     # Bus de communication inter-scripts
+|
+├── lib/                    # Bibliothèques (Shared Logic)
+│   ├── capabilities.js     # Auto-détection (Formulas, BN-Agnostic)
+│   ├── network.js          # Scanner, Cracker et Scoreur de cibles
+│   ├── constants.js        # Config, Ports, Couleurs, Seuils
+│   └── logger.js           # Système de logs centralisé
+|
+├── hack/                   # Exécution des tâches
+│   ├── controller.js       # Dispatcher de threads ultra-rapide
+│   ├── watcher.js          # Gardien de la santé des serveurs
+│   └── workers/            # Scripts atomiques (1.70-1.75 GB)
+│       ├── hack.js         # Worker de hack (1.70 GB)
+│       ├── grow.js         # Worker de grow (1.75 GB)
+│       ├── weaken.js       # Worker de weaken (1.75 GB)
+|       └── share.js        # Pour le boost de réputation
+|
+├── managers/               # Modules d'automatisation (Prochaines Étapes)
+│   ├── singularity.js      
+│   ├── server-manager.js   
+│   ├── gang-manager.js     
+│   ├── corp-manager.js     
+│   ├── hacknet-manager.js  
+│   ├── program-manager.js  
+|   ├── stock-master.js     
+│   └── sleeve-manager.js   
+│
+├── tools/
+|     ├── set-share.js     # mode share factions
+|     ├── importer.js      # importer depuis liste_cannonique.....     
+|     ├── shop.js
+|     ├── pre-flight.js    # utilitaire bien pratique pour comuniquer 
+|     ├── liquidate.js      
+|     ├── check-rep.js
+|     ├── scanner.js
+|     └── casino-predicter.js
+|
+├── data/
+|     └── todo.json       # database créer automatiquemant par importer.js
+|
+├── docs/
+|     ├── architecture.txt
+|     ├── liste_commandes.txt
+|     └── timeline.txt
