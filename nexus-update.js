@@ -87,7 +87,10 @@ export async function main(ns) {
             { remote: "tools/set-share.js",          local: "tools/set-share.js" },
             { remote: "tools/shop.js",               local: "tools/shop.js" },
             { remote: "tools/liquidate.js",          local: "tools/liquidate.js" },
-            { remote: "tools/casino-predicter.js",   local: "tools/casino-predicter.js" }
+            { remote: "tools/casino-predicter.js",   local: "tools/casino-predicter.js" },
+            { remote: "tools/basic-farm.js",         local: "tools/basic-farm.js" },
+            { remote: "tools/nexus-farm-v2.js",      local: "tools/nexus-farm-v2.js"},
+            { remote: "tools/worker-simple.js",      local: "tools/worker-simple.js"}
         ]
     };
 
