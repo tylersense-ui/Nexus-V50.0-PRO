@@ -7,46 +7,66 @@
  * │  ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║     │
  * │  ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝     │
  * ├──────────────────────────────────────────────────┤
- * │ V50.0 PRO - BN1 SAFE | Module: Hack Controller   │
+ * │ V50.0 PRO - BN1 SAFE | Module: Unified Controller│
  * ╰──────────────────────────────────────────────────╯
- * Description: Dispatcher central écoutant le Giga-Batcher.
+ * Description: Dispatcher central des threads d'exécution.
  */
 
-import { CONFIG } from "/lib/constants.js";
 import { PortHandler } from "/core/port-handler.js";
+import { CONFIG } from "/lib/constants.js";
+import { Logger } from "/lib/logger.js";
 
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
+    const log = new Logger(ns, "CONTROLLER");
     const ph = new PortHandler(ns);
-    const cmdPort = CONFIG.PORTS.COMMANDS;
+    const COMMAND_PORT = CONFIG.PORTS.COMMANDS;
     
-    ns.print(`📡 [CONTROLLER V${CONFIG.VERSION}] Écoute sur le port ${cmdPort}...`);
+    const deployedNodes = new Set();
+    const WORKER_FILES = [
+        "/hack/workers/hack.js", 
+        "/hack/workers/grow.js", 
+        "/hack/workers/weaken.js", 
+        "/hack/workers/share.js"
+    ];
+
+    log.info(`Écoute active sur le Port ${COMMAND_PORT}...`);
 
     while (true) {
-        while (!ph.isEmpty(cmdPort)) {
-            const job = ph.readJSON(cmdPort);
-            if (!job) continue;
-
+        let job = ph.readJSON(COMMAND_PORT);
+        
+        if (job && job.threads > 0) {
             const scriptPath = `/hack/workers/${job.type}.js`;
-            const host = job.host;
-            const target = job.target || "network";
-            const threads = job.threads;
-            const delay = job.delay || 0;
-            const uuid = crypto.randomUUID(); // Évite l'écrasement des processus identiques
 
-            // Vérification et copie du script worker si absent sur le node
-            if (host !== "home" && !ns.fileExists(scriptPath, host)) {
-                ns.scp(scriptPath, host, "home");
+            // Garde de sécurité : on ignore si on a pas les droits d'administration
+            if (job.host !== "home" && !ns.hasRootAccess(job.host)) {
+                log.warn(`Accès root manquant sur ${job.host}. Job ignoré.`);
+                continue;
             }
 
-            // Exécution du job (le Try/Catch évite le crash si la RAM a été consommée entre temps)
-            try {
-                ns.exec(scriptPath, host, threads, target, delay, uuid);
-            } catch (e) {
-                ns.print(`⚠️ Échec de l'assignation sur ${host} (${threads}t de ${job.type})`);
+            // Déploiement paresseux (lazy deployment)
+            if (job.host !== "home" && !deployedNodes.has(job.host)) {
+                await ns.scp(WORKER_FILES, job.host, "home");
+                deployedNodes.add(job.host);
+            }
+
+            // Exécution avec Salt pour autoriser le multi-threading simultané
+            let pid = ns.exec(scriptPath, job.host, job.threads, job.target || "network", job.delay || 0, Math.random());
+
+            // Backoff adaptatif limité pour éviter le busy-wait
+            let retries = 0;
+            const MAX_RETRIES = 5;
+            while (pid === 0 && retries < MAX_RETRIES) {
+                await ns.sleep(100); 
+                pid = ns.exec(scriptPath, job.host, job.threads, job.target || "network", job.delay || 0, Math.random());
+                retries++;
+            }
+
+            if (pid === 0) {
+                log.warn(`Job droppé après ${MAX_RETRIES} tentatives : [${job.type}] sur ${job.host} (${job.threads}t) → RAM insuffisante ?`);
             }
         }
-        await ns.sleep(10); // Boucle ultra-rapide pour ne pas désynchroniser les batchs
+        await ns.sleep(50); // Boucle optimisée pour le CPU
     }
 }
