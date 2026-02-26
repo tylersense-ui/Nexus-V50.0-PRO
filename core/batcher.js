@@ -7,9 +7,10 @@
  * │  ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║     │
  * │  ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝     │
  * ├──────────────────────────────────────────────────┤
- * │ V50.1 PRO - BUGFIX   | Module: Giga-Batcher      │
+ * │ V50.2 PRO - BN1 SAFE | Module: Giga-Batcher      │
  * ╰──────────────────────────────────────────────────╯
- * Description: Moteur de profit HWGW dynamique et optimisé.
+ * Description: Moteur de profit HWGW dynamique.
+ * Fix: Virtual RAM Ledger pour empêcher l'Over-Allocation.
  */
 
 import { CONFIG } from "/lib/constants.js";
@@ -35,7 +36,7 @@ export async function main(ns) {
     };
     
     let lastRatio = 0;
-    ns.tprint(`🚀 [${CONFIG.COLORS.INFO}GIGA-BATCHER V50.1${CONFIG.COLORS.RESET}] : Synchronisation HWGW active. (Fix RAM Limit)`);
+    ns.tprint(`🚀 [${CONFIG.COLORS.INFO}GIGA-BATCHER V50.2${CONFIG.COLORS.RESET}] : Synchronisation HWGW active. (Virtual RAM ledger activé)`);
 
     while (true) {
         let currentRatio = lastRatio;
@@ -71,26 +72,50 @@ export async function main(ns) {
                 }
             }
             lastRatio = currentRatio;
+            await ns.sleep(500); // Laisse le temps au réseau de tuer les process
+        }
+
+        // --- VIRTUAL RAM LEDGER ---
+        // On dresse la carte mémoire EXACTE du réseau à l'instant T
+        let networkRam = {};
+        for (const node of nodes) {
+            let max = ns.getServerMaxRam(node);
+            if (node === "home") max = Math.max(0, max - CONFIG.HACKING.RESERVED_HOME_RAM);
+            
+            let used = ns.getServerUsedRam(node);
+            let usedByProfit = 0;
+            let shareThreads = 0;
+            
+            ns.ps(node).forEach(p => {
+                const fname = p.filename.toLowerCase();
+                if (fname.includes("hack.js")) usedByProfit += (p.threads * RAM_COSTS.HACK);
+                if (fname.includes("grow.js")) usedByProfit += (p.threads * RAM_COSTS.GROW);
+                if (fname.includes("weaken.js")) usedByProfit += (p.threads * RAM_COSTS.WEAKEN);
+                if (fname.includes("share.js")) shareThreads += p.threads;
+            });
+
+            networkRam[node] = {
+                max: max,
+                free: max - used,
+                limitProfit: max * (1 - currentRatio),
+                usedProfit: usedByProfit,
+                shareThreads: shareThreads
+            };
         }
 
         // --- PHASE 1 : DEPLOIEMENT DU SHARE ---
         if (currentRatio > 0) {
             for (const node of nodes) {
-                let max = ns.getServerMaxRam(node);
-                if (node === "home") max = Math.max(0, max - CONFIG.HACKING.RESERVED_HOME_RAM);
+                let state = networkRam[node];
+                let targetThreads = Math.floor((state.max * currentRatio) / RAM_COSTS.SHARE);
                 
-                let targetThreads = Math.floor((max * currentRatio) / RAM_COSTS.SHARE);
-                let currentThreads = 0;
-                
-                ns.ps(node).forEach(p => {
-                    if (p.filename.includes("share.js")) currentThreads += p.threads;
-                });
-
-                if (currentThreads < targetThreads) {
-                    let free = max - ns.getServerUsedRam(node);
-                    let toSend = Math.min(targetThreads - currentThreads, Math.floor(free / RAM_COSTS.SHARE));
+                if (state.shareThreads < targetThreads) {
+                    let toSend = Math.min(targetThreads - state.shareThreads, Math.floor(state.free / RAM_COSTS.SHARE));
                     if (toSend > 0) {
                         ph.writeJSON(CONFIG.PORTS.COMMANDS, { type: 'share', host: node, threads: toSend });
+                        // MISE À JOUR DU LEDGER (Prévient la race condition !)
+                        state.free -= (toSend * RAM_COSTS.SHARE);
+                        state.shareThreads += toSend;
                     }
                 }
             }
@@ -103,9 +128,9 @@ export async function main(ns) {
                 const server = ns.getServer(targetName);
                 
                 if (server.hackDifficulty <= server.minDifficulty + 0.1 && server.moneyAvailable >= server.moneyMax * 0.99) {
-                    dispatchHwgwBatch(ns, ph, nodes, server, spacer, currentRatio, RAM_COSTS);
+                    dispatchHwgwBatch(ns, ph, nodes, server, spacer, currentRatio, RAM_COSTS, networkRam);
                 } else {
-                    dispatchPreparation(ns, ph, nodes, server, currentRatio, RAM_COSTS);
+                    dispatchPreparation(ns, ph, nodes, server, currentRatio, RAM_COSTS, networkRam);
                 }
             }
         }
@@ -115,55 +140,41 @@ export async function main(ns) {
 }
 
 /** * Fonction d'aide pour préparer un serveur (Weaken puis Grow). 
- * CORRIGÉE POUR LE LATE GAME : Limite les threads au strict nécessaire.
+ * Utilise le Ledger virtuel pour bloquer l'over-allocation.
  */
-function dispatchPreparation(ns, ph, nodes, target, ratio, RAM_COSTS) {
+function dispatchPreparation(ns, ph, nodes, target, ratio, RAM_COSTS, networkRam) {
     let secDiff = target.hackDifficulty - target.minDifficulty;
     let moneyDeficitRatio = target.moneyMax / Math.max(1, target.moneyAvailable);
     
     for (const node of nodes) {
         if (secDiff <= 0 && target.moneyAvailable >= target.moneyMax) break;
 
-        let max = ns.getServerMaxRam(node);
-        if (node === "home") max = Math.max(0, max - CONFIG.HACKING.RESERVED_HOME_RAM);
-        
-        let limit = max * (1 - ratio);
-        let usedByProfit = 0;
-        
-        ns.ps(node).forEach(p => {
-            const fname = p.filename.toLowerCase();
-            if (fname.includes("hack.js")) usedByProfit += (p.threads * RAM_COSTS.HACK);
-            if (fname.includes("grow.js")) usedByProfit += (p.threads * RAM_COSTS.GROW);
-            if (fname.includes("weaken.js")) usedByProfit += (p.threads * RAM_COSTS.WEAKEN);
-        });
-        
-        let freeForProfit = limit - usedByProfit;
+        let state = networkRam[node];
+        let freeForProfit = Math.min(state.free, state.limitProfit - state.usedProfit);
         if (freeForProfit <= 0) continue;
 
-        // Détermination des besoins stricts
         let type = 'weaken';
         let neededThreads = 0;
 
         if (secDiff > 0.5) {
             type = 'weaken';
-            // 1 thread weaken enlève 0.05 de sécurité
             neededThreads = Math.ceil(secDiff / 0.05);
         } else {
             type = 'grow';
-            // Calcul du nombre exact de threads pour atteindre le max
             neededThreads = Math.ceil(ns.growthAnalyze(target.hostname, Math.max(1.1, moneyDeficitRatio)));
         }
 
         const cost = RAM_COSTS[type.toUpperCase()];
         let maxPossibleThreads = Math.floor(freeForProfit / cost);
-        
-        // FIX : On prend le plus petit des deux ! Fini les 4 millions de threads envoyés pour rien.
         let threadsToLaunch = Math.min(maxPossibleThreads, neededThreads);
         
         if (threadsToLaunch > 0) {
             ph.writeJSON(CONFIG.PORTS.COMMANDS, { type: type, host: node, target: target.hostname, threads: threadsToLaunch });
             
-            // Mise à jour de la difficulté simulée pour le prochain noeud de la boucle
+            // MISE À JOUR DU LEDGER
+            state.free -= (threadsToLaunch * cost);
+            state.usedProfit += (threadsToLaunch * cost);
+
             if (type === 'weaken') secDiff -= ns.weakenAnalyze(threadsToLaunch);
             if (type === 'grow') target.moneyAvailable += (target.moneyAvailable * 0.1); 
         }
@@ -172,8 +183,9 @@ function dispatchPreparation(ns, ph, nodes, target, ratio, RAM_COSTS) {
 
 /**
  * Fonction d'aide pour lancer une séquence HWGW synchronisée.
+ * Utilise le Ledger virtuel pour bloquer l'over-allocation.
  */
-function dispatchHwgwBatch(ns, ph, nodes, target, spacer, ratio, RAM_COSTS) {
+function dispatchHwgwBatch(ns, ph, nodes, target, spacer, ratio, RAM_COSTS, networkRam) {
     const hackPercent = 0.10; 
     
     const hThreads  = Math.max(1, Math.floor(ns.hackAnalyzeThreads(target.hostname, target.moneyMax * hackPercent)));
@@ -194,13 +206,10 @@ function dispatchHwgwBatch(ns, ph, nodes, target, spacer, ratio, RAM_COSTS) {
 
         while (remaining > 0 && nodeIdx < nodes.length) {
             let node = nodes[nodeIdx];
-            let max = ns.getServerMaxRam(node);
-            if (node === "home") max = Math.max(0, max - CONFIG.HACKING.RESERVED_HOME_RAM);
+            let state = networkRam[node];
             
-            let limit = max * (1 - ratio);
-            let free = Math.min(limit, max - ns.getServerUsedRam(node));
-            
-            let possibleThreads = Math.floor(free / job.cost);
+            let freeForProfit = Math.min(state.free, state.limitProfit - state.usedProfit);
+            let possibleThreads = Math.floor(freeForProfit / job.cost);
             
             if (possibleThreads > 0) {
                 let toSend = Math.min(remaining, possibleThreads);
@@ -212,6 +221,10 @@ function dispatchHwgwBatch(ns, ph, nodes, target, spacer, ratio, RAM_COSTS) {
                     delay: job.d 
                 });
                 remaining -= toSend;
+                
+                // MISE À JOUR DU LEDGER
+                state.free -= (toSend * job.cost);
+                state.usedProfit += (toSend * job.cost);
             }
             nodeIdx++; 
         }
