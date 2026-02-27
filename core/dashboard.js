@@ -7,24 +7,27 @@
  * │  ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║     │
  * │  ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝     │
  * ├──────────────────────────────────────────────────┤
- * │ V50.0 PRO - BN1 SAFE | Module: Dashboard UI      │
+ * │ V50.5 PRO - BN1 SAFE | Module: Dashboard UI      │
  * ╰──────────────────────────────────────────────────╯
  * Description: Interface de monitoring en temps réel.
+ * Fix: Ligne de la bourse toujours visible (Affiche LOCKED si API non possédée).
  */
 
 import { CONFIG } from "/lib/constants.js";
 import { Network } from "/lib/network.js";
 import { Capabilities } from "/lib/capabilities.js";
+import { PortHandler } from "/core/port-handler.js";
 
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.ui.openTail();
     ns.ui.moveTail(10, 10);
-    ns.ui.resizeTail(520, 560); // Légèrement agrandi pour l'ASCII
+    ns.ui.resizeTail(520, 560);
 
     const caps = new Capabilities(ns);
     const net = new Network(ns, caps);
+    const ph = new PortHandler(ns);
     
     const startMoney = ns.getPlayer().money;
     const startTime = Date.now();
@@ -54,6 +57,8 @@ export async function main(ns) {
 
     while (true) {
         ns.clearLog();
+        caps.update(); // Met à jour les accès en direct (si tu achètes l'API en cours de route)
+        
         const player = ns.getPlayer();
         const allServers = net.refresh();
         const pservs = allServers.filter(s => s.startsWith(CONFIG.MANAGERS.PSERV_PREFIX));
@@ -90,24 +95,30 @@ export async function main(ns) {
         const xpRate = (player.exp.hacking - lastXp);
         lastXp = player.exp.hacking;
         const ramPerc = (cachedMaxRam > 0) ? (cachedUsedRam / cachedMaxRam) * 100 : 0;
-        
-        // Formule de boost de réputation par le Share
         const shareBoost = 1 + (Math.pow(cachedTS, 0.7) * 0.05);
+
+        // --- LECTURE BOURSIÈRE DEPUIS LE PORT 5 ---
+        let stockValue = 0;
+        let stockCount = 0;
+        const stockRaw = ph.peek(CONFIG.PORTS.STOCK_DATA || 5);
+        if (stockRaw !== "NULL PORT DATA") {
+            try { 
+                const sData = JSON.parse(stockRaw);
+                stockValue = sData.value || 0;
+                stockCount = sData.active || 0;
+            } catch (e) {}
+        }
 
         // --- AFFICHAGE ---
         ns.print(`┌    ${CONFIG.COLORS.INFO}NEXUS-APEX V${CONFIG.VERSION}${CONFIG.COLORS.RESET}  ─  ${new Date().toLocaleTimeString()}  ─  LVL ${player.skills.hacking}    ┐`);
         ns.print(`  💰 CAPITAL : ${ns.nFormat(player.money || 0, "$0.000a")}`);
         ns.print(`  📈 PROFIT  : ${ns.nFormat(currentProfit || 0, "$0.000a")}/s [REC: ${ns.nFormat(maxProfit || 0, "$0.000a")}/s]`);
         
+        // --- LA FAMEUSE LIGNE FIXE ---
         if (caps.tix) {
-            let totalStock = 0; let count = 0;
-            try { 
-                ns.stock.getSymbols().forEach(s => { 
-                    const [sh] = ns.stock.getPosition(s); 
-                    if(sh > 0) { totalStock += sh * ns.stock.getBidPrice(s); count++; }
-                }); 
-                ns.print(`  💹 BOURSE  : ${ns.nFormat(totalStock, "$0.000a")} (${count} Trks)`);
-            } catch(e) { /* Silencieux si TIX plante en cours de route */ }
+            ns.print(`  💹 BOURSE  : ${ns.nFormat(stockValue, "$0.000a")} (${stockCount} Trks)`);
+        } else {
+            ns.print(`  💹 BOURSE  : ${CONFIG.COLORS.DEBUG}LOCKED (TIX API Requise)${CONFIG.COLORS.RESET}`);
         }
         
         ns.print(`  ✨ XP RATE : ${ns.nFormat(xpRate || 0, "0.000a")}k/s`);
@@ -115,7 +126,6 @@ export async function main(ns) {
         ns.print(`  🌐 NODES     : ${pservs.length} / ${CONFIG.MANAGERS.MAX_SERVERS} Online`);
         ns.print(`  💾 NETWORK   : ${ns.formatRam(cachedUsedRam)} / ${ns.formatRam(cachedMaxRam)} (${ramPerc.toFixed(1)}%)`);
         
-        // Barre de progression RAM visuelle
         const bars = Math.floor(ramPerc / 2.5);
         const fill = "█".repeat(Math.max(0, bars));
         const empty = "░".repeat(Math.max(0, 40 - bars));
@@ -131,8 +141,8 @@ export async function main(ns) {
             const mPerc = ((s.moneyAvailable / Math.max(1, s.moneyMax)) * 100).toFixed(0);
             const sDiff = (s.hackDifficulty - s.minDifficulty).toFixed(1);
             
-            let icon = "🛡️"; // En préparation (Weaken/Grow)
-            if (mPerc >= 98 && sDiff <= 0.5) icon = "💸"; // Prêt à être Hacké (Batch)
+            let icon = "🛡️"; 
+            if (mPerc >= 98 && sDiff <= 0.5) icon = "💸"; 
             
             const nameTag = t.substring(0, 10).toUpperCase().padEnd(10);
             ns.print(`  ${icon} ${nameTag} | M:${mPerc.padStart(3)}% S:+${sDiff.padEnd(4)} | ETA: ${formatEta(ns.getWeakenTime(t))}`);
@@ -142,6 +152,6 @@ export async function main(ns) {
         ns.print(`  ⏳ TIME PLAYED : ${formatTimeShort(player.playtimeSinceLastAug)}`);
         ns.print(`└──────────────────────────────────────────────────┘`);
 
-        await ns.sleep(1000); // Remplacement de ns.asleep
+        await ns.sleep(1000); 
     }
 }
