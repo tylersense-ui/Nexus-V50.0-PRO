@@ -30,6 +30,7 @@ export async function main(ns) {
         { name: "BATCHER",    path: "/core/batcher.js" },
         { name: "DASHBOARD",  path: "/core/dashboard.js" },
         { name: "STOCK",      path: "/managers/stock-master.js" },
+        { name: "SERVER",     path: "/managers/server-manager.js" },
         { name: "HACKNET",    path: "/managers/hacknet-manager.js" }
     ];
 
