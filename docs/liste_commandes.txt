@@ -1,0 +1,35 @@
+===========================================================
+>> NEXUS v51.0 | LISTE DES COMMANDES MANUELLES
+===========================================================
+
+[ SYSTÈME ]
+> run boot.js
+  Lance la séquence d'amorçage complète de l'architecture NEXUS.
+> run global-kill.js --confirm
+  Coupe instantanément tous les scripts du réseau pour libérer la RAM.
+> run nexus-update.js
+  Met à jour la codebase depuis le dépôt distant.
+
+[ DAEDALUS - GESTION DES AUGMENTATIONS ]
+> run tools/importer.js [Faction1] [Faction2] ...
+  Parse la liste canonique et génère data/todo.json (par défaut : CyberSec, NiteSec, etc.).
+> run tools/pre-flight.js
+  Ouvre le Dashboard UI pour planifier les achats groupés d'augmentations (Runs, Inflation, Prérequis).
+> run tools/check-rep.js
+  Simule l'achat d'une augmentation spécifique.
+> run tools/shop.js [Nom_Augmentation]
+  Marque manuellement une augmentation comme achetée dans la database.
+
+[ DÉPLOIEMENT & HACKING ]
+> run tools/nexus-farm-v2.js [Cible]
+  Lance le Greedy Swarm (Early Game). Choix auto de la cible si non spécifiée.
+> run tools/basic-farm.js
+  Ancien outil de farm basique (Legacy).
+
+[ UTILITAIRES & ÉCONOMIE ]
+> run tools/scanner.js
+  Radar tactique pour identifier les serveurs piratables avec leurs stats actuelles.
+> run tools/set-share.js [Ratio]
+  Force le pourcentage de RAM du réseau alloué aux scripts de Share (Boost de réputation faction).
+> run tools/liquidate.js
+  Vente immédiate de toutes les actions en bourse (Bouton Panique / Reset).

@@ -1,55 +1,66 @@
+    ███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗
+    ████╗  ██║██╔════╝╚██╗██╔╝██║   ██║██╔════╝
+    ██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║███████╗
+    ██║╚██╗██║██╔══╝   ██╔██╗ ██║   ██║╚════██║
+    ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║
+    ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
+    >> NEXUS v51.0 | ARCHITECTURE | PROJECT DAEDALUS <<
+
 nexus-automation/
-├── README.md               
-├── boot.js                 # Point d'entrée unique (Optionnel)
-├── global-kill.js          # Arrêt d'urgence de tout le réseau
+├── README.md               # Documentation générale
+├── boot.js                 # Point d'entrée unique (Séquence d'amorçage propre) [V51.0 PRO]
+├── global-kill.js          # Arrêt d'urgence de tout le réseau [V51.0 PRO]
+├── nexus-update.js         # Auto-updater GitHub [V51.0 PRO]
 ├── Liste_Cannonique_augmentations_bitburner.txt        
-|
-├── core/                   # Cerveau du système
-│   ├── orchestrator.js     # Kernel : Root les serveurs et lance les modules
-|   ├── batcher.js          # Moteur Giga-Batcher HWGW (Cœur du profit)
-|   ├── dashboard.js        # Interface de contrôle v42.0 (Monitoring)
-│   ├── ram-manager.js      # (À venir) Optimisation de l'allocation
-│   └── port-handler.js     # Bus de communication inter-scripts
-|
-├── lib/                    # Bibliothèques (Shared Logic)
-│   ├── capabilities.js     # Auto-détection (Formulas, BN-Agnostic)
-│   ├── network.js          # Scanner, Cracker et Scoreur de cibles
-│   ├── constants.js        # Config, Ports, Couleurs, Seuils
-│   └── logger.js           # Système de logs centralisé
-|
-├── hack/                   # Exécution des tâches
-│   ├── controller.js       # Dispatcher de threads ultra-rapide
-│   ├── watcher.js          # Gardien de la santé des serveurs
-│   └── workers/            # Scripts atomiques (1.70-1.75 GB)
-│       ├── hack.js         # Worker de hack (1.70 GB)
-│       ├── grow.js         # Worker de grow (1.75 GB)
-│       ├── weaken.js       # Worker de weaken (1.75 GB)
-|       └── share.js        # Pour le boost de réputation
-|
-├── managers/               # Modules d'automatisation (Prochaines Étapes)
-│   ├── singularity.js      
-│   ├── server-manager.js   
-│   ├── gang-manager.js     
-│   ├── corp-manager.js     
-│   ├── hacknet-manager.js  
-│   ├── program-manager.js  
-|   ├── stock-master.js     
-│   └── sleeve-manager.js   
 │
-├── tools/
-|     ├── set-share.js     # mode share factions
-|     ├── importer.js      # importer depuis liste_cannonique.....     
-|     ├── shop.js
-|     ├── pre-flight.js    # utilitaire bien pratique pour comuniquer 
-|     ├── liquidate.js      
-|     ├── check-rep.js
-|     ├── scanner.js
-|     └── casino-predicter.js
-|
+├── core/                   # Cerveau du système
+│   ├── orchestrator.js     # Kernel : Root les serveurs et lance les modules [V51.0 PRO]
+│   ├── batcher.js          # Moteur Giga-Batcher HWGW (Cœur du profit) [V51.0 PRO]
+│   ├── dashboard.js        # Interface de contrôle UI (Monitoring) [V51.0 PRO]
+│   ├── ram-manager.js      # Optimisation de l'allocation mémoire [V51.0 PRO]
+│   └── port-handler.js     # Bus de communication inter-scripts sécurisé [V51.0 PRO]
+│
+├── lib/                    # Bibliothèques (Shared Logic)
+│   ├── capabilities.js     # Auto-détection (Formulas, API Bourse, BN-Agnostic) [V51.0 PRO]
+│   ├── network.js          # Scanner, Cracker et Scoreur mathématique [V51.0 PRO]
+│   ├── constants.js        # Config, Ports, Couleurs, Seuils (Variables Globales) [V51.0 PRO]
+│   └── logger.js           # Système de logs centralisé [V51.0 PRO]
+│
+├── hack/                   # Exécution des tâches de Hacking
+│   ├── controller.js       # Dispatcher de threads asynchrone [V51.0 PRO]
+│   ├── watcher.js          # Gardien de la santé d'une cible [V51.0 PRO]
+│   └── workers/            # Scripts atomiques d'exécution
+│       ├── hack.js         # Prélèvement d'argent [V51.0 PRO]
+│       ├── grow.js         # Croissance économique [V51.0 PRO]
+│       ├── weaken.js       # Baisse de sécurité [V51.0 PRO]
+│       └── share.js        # Boost de réputation Faction [V51.0 PRO]
+│
+├── managers/               # Modules d'automatisation avancés
+│   ├── singularity.js      # Pilote l'avatar (Travail, Crimes, Factions) [V51.0 PRO]
+│   ├── server-manager.js   # Achat et upgrade de l'infrastructure [V51.0 PRO]
+│   ├── gang-manager.js     # Gestionnaire de Syndicat (BN2) [V51.0 PRO]
+│   ├── corp-manager.js     # Mégacorporation (Agriculture) [V51.0 PRO]
+│   ├── hacknet-manager.js  # Nœuds Hacknet pour revenu passif [V51.0 PRO]
+│   ├── program-manager.js  # Achat du Darkweb et des exe [V51.0 PRO]
+│   ├── stock-master.js     # Trading Boursier autonome [V51.0 PRO]
+│   └── sleeve-manager.js   # Pilotage des Clones [V51.0 PRO]
+│
+├── tools/                  # Utilitaires et commandes manuelles
+│   ├── importer.js         # Importe la database des augmentations [V51.0 PRO]
+│   ├── pre-flight.js       # Moniteur de Daedalus [V51.0 PRO]
+│   ├── check-rep.js        # Simulateur d'achat [V51.0 PRO]
+│   ├── scanner.js          # Radar tactique [V51.0 PRO]
+│   ├── set-share.js        # Réglage du ratio de Share [V51.0 PRO]
+│   ├── shop.js             # Éditeur manuel de Database [V51.0 PRO]
+│   ├── liquidate.js        # Bouton Panique Boursier [V51.0 PRO]
+│   ├── basic-farm.js       # Script de farm early-game [V51.0 PRO]
+│   ├── worker-simple.js    # Payload pour le farm V2 [V51.0 PRO]
+│   └── nexus-farm-v2.js    # Déployeur massif auto-balancé (Greedy Swarm) [V51.0 PRO]
+│
 ├── data/
-|     └── todo.json       # database créer automatiquemant par importer.js
-|
-├── docs/
-|     ├── architecture.txt
-|     ├── liste_commandes.txt
-|     └── timeline.txt
+│   └── todo.json           # Database générée par importer.js
+│
+└── docs/
+    ├── architecture.txt    # Plan d'urbanisme du projet
+    ├── liste_commandes.txt # Index des commandes manuelles
+    └── timeline.txt        # Feuille de route des BitNodes
