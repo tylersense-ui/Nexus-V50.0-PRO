@@ -7,7 +7,7 @@
  * │  ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║     │
  * │  ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝     │
  * ├──────────────────────────────────────────────────┤
- * │ V50.4 PRO - EARLY GAME | Tool: Greedy Swarm V2   │
+ * │ V51.0 PRO - EARLY GAME | Tool: Greedy Swarm V2   │
  * ╰──────────────────────────────────────────────────╯
  * Description: Imprimante à billets autonome pour rush les premiers milliards.
  * Logic: Essaim auto-équilibré (10%H / 65%G / 25%W). Aucun port requis.

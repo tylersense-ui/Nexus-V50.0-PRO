@@ -7,9 +7,10 @@
  * │  ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║     │
  * │  ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝     │
  * ├──────────────────────────────────────────────────┤
- * │ V50.0 PRO - BN1 SAFE | Tool: Importer            │
+ * │ V51.0 PRO - BN1 SAFE | Tool: Importer            │
  * ╰──────────────────────────────────────────────────╯
- * Description: Générateur du plan de vol Daedalus.
+ * Description: Générateur du plan de vol Daedalus (Filtre dynamique + Prérequis).
+ * Usage: run /tools/importer.js [Faction1] [Faction2] ...
  */
 
 /** @param {NS} ns **/
@@ -17,7 +18,12 @@ export async function main(ns) {
     const INPUT_FILE = "Liste_Cannonique_augmentations_bitburner.txt";
     const OUTPUT_FILE = "data/todo.json";
     
-    const TARGET_FACTIONS = ["CyberSec", "NiteSec", "The Black Hand", "BitRunners", "Tian Di Hui", "Slum Snakes"];
+    // Factions par défaut si aucun argument n'est fourni
+    let TARGET_FACTIONS = ["CyberSec", "NiteSec", "The Black Hand", "BitRunners"];
+    
+    if (ns.args.length > 0) {
+        TARGET_FACTIONS = ns.args.map(a => a.toString());
+    }
 
     if (!ns.fileExists(INPUT_FILE)) {
         ns.tprint(`❌ Erreur : ${INPUT_FILE} introuvable.`);
@@ -28,27 +34,25 @@ export async function main(ns) {
     const lines = content.split("\n");
     const todo = [];
 
-    ns.tprint("🔍 Nexus-Apex : Filtrage du manifeste pour les factions de progression...");
+    ns.tprint(`🔍 Filtrage du manifeste pour : ${TARGET_FACTIONS.join(", ")}...`);
 
     for (let line of lines) {
-        if (!line.includes("|") || line.startsWith("Légende")) continue;
+        if (!line.includes("|") || line.startsWith("Légende") || line.startsWith("╭") || line.startsWith("│") || line.startsWith("╰") || line.startsWith("├")) continue;
 
-        const parts = line.split("|");
-        const name = parts[0].trim();
-        const factions = parts[3] ? parts[3].split(",").map(f => f.trim()) : [];
+        const parts = line.split("|").map(p => p.trim());
+        const name = parts[0];
+        let priceRaw = parts[1];
+        let repRaw = parts[2];
+        const factionsStr = parts[3] || "";
+        // Support de la nouvelle colonne : si vide, on considère "Aucun"
+        const prereqRaw = parts[4] || "Aucun"; 
         
-        const isTargetFaction = factions.some(f => TARGET_FACTIONS.includes(f));
+        const factions = factionsStr.split(",").map(f => f.trim());
         const isNFG = name.includes("NeuroFlux Governor");
-
-        if (isTargetFaction || isNFG) {
-            let priceRaw = parts[1].trim();
-            let repRaw = parts[2].trim();
-
-            if (priceRaw === "" && parts[2]?.includes("$")) {
-                priceRaw = parts[2].trim();
-                repRaw = parts[3]?.trim() || "0";
-            }
-
+        
+        const isTarget = isNFG || factions.some(f => TARGET_FACTIONS.includes(f));
+        
+        if (isTarget) {
             const parseNexusVal = (str) => {
                 if (!str) return 0;
                 let val = str.replace(/[$,\s]/g, "").toLowerCase();
@@ -60,17 +64,28 @@ export async function main(ns) {
                 return parseFloat(val.replace(",", "")) * multiplier || 0;
             };
 
+            const prereqs = (prereqRaw.toLowerCase() === "aucun" || prereqRaw === "") ? [] : prereqRaw.split(",").map(s => s.trim());
+
             todo.push({
                 name: name,
                 price: parseNexusVal(priceRaw),
                 rep: parseNexusVal(repRaw),
                 bought: false,
-                faction: isNFG ? "All" : factions.filter(f => TARGET_FACTIONS.includes(f))[0]
+                faction: isNFG ? "All" : factions.find(f => TARGET_FACTIONS.includes(f)),
+                prereqs: prereqs
             });
         }
     }
 
-    await ns.write(OUTPUT_FILE, JSON.stringify(todo, null, 2), "w");
-    ns.tprint(`✅ Nexus-Apex : Mission planifiée. ${todo.length} augmentations ciblées.`);
-    ns.tprint(`🚀 Lance 'run /tools/pre-flight.js' pour voir ton plan de vol Daedalus.`);
+    const uniqueTodo = [];
+    const seen = new Set();
+    for (const item of todo) {
+        if (!seen.has(item.name)) {
+            seen.add(item.name);
+            uniqueTodo.push(item);
+        }
+    }
+
+    await ns.write(OUTPUT_FILE, JSON.stringify(uniqueTodo, null, 2), "w");
+    ns.tprint(`✅ Succès : ${uniqueTodo.length} augmentations importées dans ${OUTPUT_FILE}.`);
 }
