@@ -12,5 +12,4 @@ NEXUS est un framework d'automatisation complet pour Bitburner. Conçu pour scal
 2. **Early Game** : Exécutez `run tools/tools/nexus-greedy-swarm-v2.js` pour lancer le Greedy Swarm sur la meilleure cible disponible.
 3. **Transition** : Une fois la RAM suffisante et Formulas.exe acquis, exécutez `run global-kill.js --confirm`.
 4. **Late Game** : Lancez `run boot.js` pour démarrer l'Orchestrateur, le Batcher avancé et les Managers.
-
 5. **Achat d'Augmentations** : Surveillez vos finances avec `run tools/pre-flight.js`.
