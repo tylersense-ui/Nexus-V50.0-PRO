@@ -7,7 +7,7 @@
  * │  ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║     │
  * │  ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝     │
  * ├──────────────────────────────────────────────────┤
- * │ V51.0 PRO - BN1 SAFE | Module: Giga-Batcher      │
+ * │ V51.0.2 PRO - BN1 SAFE | Module: Giga-Batcher    │
  * ╰──────────────────────────────────────────────────╯
  * Description: Moteur de profit HWGW ultime.
  * Features: First-Fit Decreasing, ns.formulas API, Dynamic EV/s, Safe Margins.
@@ -16,281 +16,211 @@
 import { CONFIG } from "/lib/constants.js";
 import { Network } from "/lib/network.js";
 import { Capabilities } from "/lib/capabilities.js";
-import { PortHandler } from "/core/port-handler.js";
+import { Logger } from "/lib/logger.js";
 
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
     const caps = new Capabilities(ns);
     const net = new Network(ns, caps);
-    const ph = new PortHandler(ns);
-    
-    const SHARE_PORT = CONFIG.PORTS.SHARE_RATIO || 6;
-    const spacer = CONFIG.HACKING.BATCH_SPACING;
+    const log = new Logger(ns, "BATCHER");
 
-    // Lecture dynamique des coûts en RAM
-    const RAM_COSTS = {
-        SHARE: ns.getScriptRam("/hack/workers/share.js") || 4.0,
-        HACK: ns.getScriptRam("/hack/workers/hack.js") || 1.7,
-        GROW: ns.getScriptRam("/hack/workers/grow.js") || 1.75,
-        WEAKEN: ns.getScriptRam("/hack/workers/weaken.js") || 1.75
+    const WORKERS = {
+        HACK: "/hack/workers/hack.js",
+        WEAKEN: "/hack/workers/weaken.js",
+        GROW: "/hack/workers/grow.js"
     };
-    
-    let lastRatio = 0;
-    
-    ns.tprint(`\n===========================================================`);
-    ns.tprint(`>> NEXUS v51.0 | GIGA-BATCHER | PROJECT DAEDALUS`);
-    ns.tprint(`===========================================================`);
-    
-    if (caps.formulas) ns.tprint(`✨ [API FORMULAS] : Détectée. Mode Mathématique Précis Activé.`);
-    else ns.tprint(`⚠️ [API FORMULAS] : Non détectée. Mode d'estimation classique.`);
-    ns.tprint(`🧠 [PACKING] : Algorithme First-Fit Decreasing en ligne.`);
+
+    // 1. Calcul dynamique de la RAM réelle des scripts
+    const RAM = {
+        HACK: ns.getScriptRam(WORKERS.HACK),
+        WEAKEN: ns.getScriptRam(WORKERS.WEAKEN),
+        GROW: ns.getScriptRam(WORKERS.GROW)
+    };
+
+    log.info(`Initialisation K-CORE avec ${caps.formulas ? "FORMULAS.EXE" : "Calculs Natifs"}`);
 
     while (true) {
-        caps.update(); // Met à jour l'accès à Formulas en temps réel
-        let currentRatio = lastRatio;
+        const targetName = net.getBestTarget();
+        const target = ns.getServer(targetName);
+        const player = ns.getPlayer();
+
+        // 2. Préparation de la cible (Security & Money)
+        // On n'attaque pas une cible qui n'est pas parfaite
+        if (target.hackDifficulty > target.minDifficulty + 0.5 || target.moneyAvailable < target.moneyMax * 0.95) {
+            await prepTarget(ns, target, player, caps, RAM, WORKERS, net);
+            await ns.sleep(1000); // Pause pendant la préparation
+            continue;
+        }
+
+        // 3. Calcul du Hack Percent optimal via EV/s
+        const hackPct = calculateOptimalHackPct(ns, target, player, caps);
         
-        while (!ph.isEmpty(SHARE_PORT)) {
-            const config = ph.readJSON(SHARE_PORT);
-            if (config && config.shareRatio !== undefined) currentRatio = Number(config.shareRatio);
-        }
-        ph.writeJSON(SHARE_PORT, { shareRatio: currentRatio });
-
-        const nodes = net.refresh().filter(n => ns.hasRootAccess(n) && ns.getServerMaxRam(n) > 0);
-
-        // Nettoyage si le ratio change
-        if (currentRatio !== lastRatio) {
-            for (const node of nodes) {
-                ns.ps(node).forEach(p => {
-                    const fname = p.filename.toLowerCase();
-                    if ((currentRatio > lastRatio && !fname.includes("share")) || (currentRatio < lastRatio && fname.includes("share"))) ns.kill(p.pid);
-                });
-            }
-            lastRatio = currentRatio;
-            await ns.sleep(500);
-        }
-
-        // --- 1. STATE & IN-FLIGHT TRACKER ---
-        let networkRam = {};
-        let inFlight = {};
-
-        for (const node of nodes) {
-            let max = ns.getServerMaxRam(node);
-            if (node === "home") max = Math.max(0, max - CONFIG.HACKING.RESERVED_HOME_RAM);
-            let used = ns.getServerUsedRam(node);
-            let usedProfit = 0, shareThreads = 0;
-
-            ns.ps(node).forEach(p => {
-                const fname = p.filename.toLowerCase();
-                const target = p.args[0];
-
-                if (fname.includes("share.js")) shareThreads += p.threads;
-                else {
-                    if (fname.includes("hack.js")) usedProfit += (p.threads * RAM_COSTS.HACK);
-                    if (fname.includes("grow.js")) usedProfit += (p.threads * RAM_COSTS.GROW);
-                    if (fname.includes("weaken.js")) usedProfit += (p.threads * RAM_COSTS.WEAKEN);
-
-                    if (target && typeof target === "string") {
-                        if (!inFlight[target]) inFlight[target] = { h: 0, g: 0, w: 0 };
-                        if (fname.includes("hack.js")) inFlight[target].h += p.threads;
-                        if (fname.includes("grow.js")) inFlight[target].g += p.threads;
-                        if (fname.includes("weaken.js")) inFlight[target].w += p.threads;
-                    }
-                }
-            });
-            networkRam[node] = { max, free: Math.max(0, max - used), limitProfit: max * (1 - currentRatio), usedProfit, shareThreads };
-        }
-
-        // --- 2. SHARE DEPLOYMENT ---
-        if (currentRatio > 0) {
-            for (const node of nodes) {
-                let state = networkRam[node];
-                let targetThreads = Math.floor((state.max * currentRatio) / RAM_COSTS.SHARE);
-                if (state.shareThreads < targetThreads) {
-                    let toSend = Math.min(targetThreads - state.shareThreads, Math.floor(state.free / RAM_COSTS.SHARE));
-                    if (toSend > 0) {
-                        ph.writeJSON(CONFIG.PORTS.COMMANDS, { type: 'share', host: node, threads: toSend });
-                        state.free -= (toSend * RAM_COSTS.SHARE);
-                        state.shareThreads += toSend;
-                    }
-                }
-            }
-        }
-
-        // --- 3. PROFIT DEPLOYMENT (HWGW) ---
-        if (currentRatio < 1.0) {
-            const targets = net.getTopTargets(10);
-            for (const targetName of targets) {
-                const server = ns.getServer(targetName);
-                if (server.hackDifficulty <= server.minDifficulty + 0.1 && server.moneyAvailable >= server.moneyMax * 0.99) {
-                    dispatchHwgwBatch(ns, caps, ph, nodes, server, spacer, RAM_COSTS, networkRam, inFlight);
-                } else {
-                    dispatchPreparation(ns, caps, ph, nodes, server, RAM_COSTS, networkRam, inFlight);
-                }
-            }
-        }
-        await ns.sleep(spacer * 5); 
-    }
-}
-
-/**
- * Fonction de distribution First-Fit Decreasing
- */
-function allocateJobFFD(ns, ph, nodes, networkRam, type, targetName, totalThreads, cost, delay = 0) {
-    if (totalThreads <= 0) return 0;
-    
-    // Tri des nœuds par RAM de profit libre décroissante (First-Fit Decreasing)
-    let sortedNodes = [...nodes].sort((a, b) => {
-        let freeA = Math.min(networkRam[a].free, Math.max(0, networkRam[a].limitProfit - networkRam[a].usedProfit));
-        let freeB = Math.min(networkRam[b].free, Math.max(0, networkRam[b].limitProfit - networkRam[b].usedProfit));
-        return freeB - freeA;
-    });
-
-    let remaining = totalThreads;
-    for (const node of sortedNodes) {
-        if (remaining <= 0) break;
+        // 4. Calcul des threads du batch HWGW
+        const batch = calculateHWGW(ns, target, player, hackPct, caps, RAM);
         
-        let state = networkRam[node];
-        let freeForProfit = Math.min(state.free, Math.max(0, state.limitProfit - state.usedProfit));
-        let possibleThreads = Math.floor(freeForProfit / cost);
-        
-        if (possibleThreads > 0) {
-            let toSend = Math.min(remaining, possibleThreads);
-            ph.writeJSON(CONFIG.PORTS.COMMANDS, { type: type, host: node, target: targetName, threads: toSend, delay: delay });
-            
-            state.free -= (toSend * cost);
-            state.usedProfit += (toSend * cost);
-            remaining -= toSend;
-        }
-    }
-    return totalThreads - remaining; // Retourne le nombre de threads réellement envoyés
-}
+        // 5. Dispatch via First-Fit Decreasing (FFD) avec Slicing
+        const networkList = net.refresh().filter(h => ns.hasRootAccess(h));
+        const success = dispatchBatchFFDSliced(ns, targetName, batch, networkList, WORKERS);
 
-/**
- * Préparation du serveur (Weaken / Grow)
- */
-function dispatchPreparation(ns, caps, ph, nodes, target, RAM_COSTS, networkRam, inFlight) {
-    let runningW = inFlight[target.hostname]?.w || 0;
-    let runningG = inFlight[target.hostname]?.g || 0;
-
-    let simulatedSec = target.hackDifficulty - (runningW * 0.05);
-    let secDiff = Math.max(0, simulatedSec - target.minDifficulty);
-    
-    let neededW = Math.ceil(secDiff / 0.05);
-    let neededG = 0;
-
-    if (secDiff <= 0.5 && target.moneyAvailable < target.moneyMax * 0.99) {
-        let moneyToGrow = target.moneyMax / Math.max(1, target.moneyAvailable);
-        let totalG = 0;
-        
-        // Utilisation de Formulas pour un calcul exact de Grow
-        if (caps.formulas) {
-            let player = ns.getPlayer();
-            let so = ns.getServer(target.hostname);
-            so.hackDifficulty = so.minDifficulty; // Simule qu'on le grow à secu min
-            totalG = Math.ceil(ns.formulas.hacking.growThreads(so, player, so.moneyMax));
+        if (success) {
+            log.debug(`Batch lancé sur ${targetName} (Hack: ${Math.round(hackPct * 100)}%)`);
+            await ns.sleep(CONFIG.HACKING.BATCH_SPACING || 100);
         } else {
-            totalG = Math.ceil(ns.growthAnalyze(target.hostname, Math.max(1.1, moneyToGrow)));
+            log.warn(`RAM réseau insuffisante pour un batch complet sur ${targetName}. Attente...`);
+            await ns.sleep(2000);
         }
-        
-        neededG = Math.max(0, totalG - runningG);
-        if (neededG > 0) {
-            neededG += 1; // Marge de sécurité
-            neededW += Math.ceil(ns.growthAnalyzeSecurity(neededG) / 0.05) + 1; // Compensation avec marge
+    }
+}
+
+/** * Algorithme First-Fit Decreasing AVEC SCINDAGE (Thread Slicing)
+ * Règle le problème du "Réseau Fantôme" en autorisant la fragmentation des tâches.
+ * @param {NS} ns @param {string} target @param {Array} batch @param {string[]} hosts @param {Object} workers
+ */
+function dispatchBatchFFDSliced(ns, target, batch, hosts, workers) {
+    // Trier les hôtes par RAM libre décroissante
+    const sortedHosts = hosts
+        .map(h => ({ name: h, free: ns.getServerMaxRam(h) - ns.getServerUsedRam(h) - (h === "home" ? CONFIG.HACKING.getHomeReservedRam(ns) : 0) }))
+        .sort((a, b) => b.free - a.free);
+
+    const jobs = [];
+    let batchValid = true;
+
+    // Simulation de l'allocation pour vérifier si le batch entier passe
+    for (const task of batch) {
+        let threadsRemaining = task.t;
+
+        for (const host of sortedHosts) {
+            if (threadsRemaining <= 0) break; 
+            if (host.free < task.cost) continue; 
+
+            let possibleThreads = Math.floor(host.free / task.cost);
+            let threadsToAssign = Math.min(threadsRemaining, possibleThreads);
+
+            jobs.push({ 
+                host: host.name, 
+                type: task.type, 
+                t: threadsToAssign, 
+                d: task.d 
+            });
+            
+            host.free -= threadsToAssign * task.cost;
+            threadsRemaining -= threadsToAssign;
+        }
+
+        if (threadsRemaining > 0) { 
+            batchValid = false; 
+            break; 
         }
     }
 
-    if (neededW > 0) allocateJobFFD(ns, ph, nodes, networkRam, 'weaken', target.hostname, neededW, RAM_COSTS.WEAKEN);
-    if (neededG > 0) allocateJobFFD(ns, ph, nodes, networkRam, 'grow', target.hostname, neededG, RAM_COSTS.GROW);
+    // Exécution réelle si l'allocation virtuelle a réussi
+    if (batchValid) {
+        for (const job of jobs) {
+            const script = workers[job.type.toUpperCase()];
+            
+            // AUTO-DEPLOYMENT: Le réveil du réseau fantôme
+            if (!ns.fileExists(script, job.host)) {
+                ns.scp(script, job.host, "home");
+            }
+            
+            // Math.random() garantit un PID unique même si les arguments sont identiques (requis pour le slicing)
+            ns.exec(script, job.host, job.t, target, job.d, Math.random());
+        }
+        return true;
+    }
+    return false;
 }
 
-/**
- * Algorithme HWGW Parfait (Dynamic EV & Perfect Timing)
- */
-function dispatchHwgwBatch(ns, caps, ph, nodes, target, spacer, RAM_COSTS, networkRam, inFlight) {
-    // Si un Hack est déjà en vol, on bloque pour ne pas briser la cible (Anti-Spam absolu)
-    if ((inFlight[target.hostname]?.h || 0) > 0) return;
+/** Calcul de l'EV/s pour trouver le pourcentage de hack optimal */
+function calculateOptimalHackPct(ns, target, player, caps) {
+    let bestPct = 0.05;
+    let maxEV = 0;
 
-    let hT, w1T, gT, w2T;
-    let wTime, gTime, hTime;
-
-    if (caps.formulas) {
-        let player = ns.getPlayer();
-        let so = ns.getServer(target.hostname);
-        so.hackDifficulty = so.minDifficulty;
-        so.moneyAvailable = so.moneyMax;
-
-        // CALCUL DYNAMIQUE DU POURCENTAGE OPTIMAL (EV/s)
-        let bestPct = 0.10;
-        let bestEV = 0;
-        let chance = ns.formulas.hacking.hackChance(so, player);
-        let wkTimeForm = ns.formulas.hacking.weakenTime(so, player);
-        let hackPctPerThread = ns.formulas.hacking.hackPercent(so, player);
-
-        for(let pct = 0.05; pct <= 0.50; pct += 0.05) {
-            let testHt = Math.max(1, Math.floor(pct / hackPctPerThread));
-            let testW1 = Math.ceil(testHt * 0.002 / 0.05) + 1;
-            
-            so.moneyAvailable = Math.max(1, so.moneyMax * (1 - pct));
-            let testGt = Math.ceil(ns.formulas.hacking.growThreads(so, player, so.moneyMax)) + 1;
-            let testW2 = Math.ceil(testGt * 0.004 / 0.05) + 1;
-            so.moneyAvailable = so.moneyMax; // reset
-
-            let totalRam = (testHt * RAM_COSTS.HACK) + (testW1 * RAM_COSTS.WEAKEN) + (testGt * RAM_COSTS.GROW) + (testW2 * RAM_COSTS.WEAKEN);
-            let ev = (so.moneyMax * pct * chance) / (wkTimeForm * totalRam); // Expected Value par cycle par GB
-            
-            if (ev > bestEV) { bestEV = ev; bestPct = pct; }
+    for (let p = 0.05; p <= 0.80; p += 0.05) {
+        const hTime = caps.hasFormulas() ? ns.formulas.hacking.hackTime(target, player) : ns.getHackTime(target.hostname);
+        const chance = caps.hasFormulas() ? ns.formulas.hacking.hackChance(target, player) : ns.hackAnalyzeChance(target.hostname);
+        const ev = (p * target.moneyMax * chance) / hTime;
+        
+        if (ev > maxEV) {
+            maxEV = ev;
+            bestPct = p;
         }
+    }
+    return bestPct;
+}
 
-        // APPLICATION DES CALCULS EXACTS
-        hT = Math.max(1, Math.floor(bestPct / hackPctPerThread));
-        w1T = Math.ceil(hT * 0.002 / 0.05) + 1; // +1 de marge
-        
-        so.moneyAvailable = Math.max(1, so.moneyMax * (1 - (hT * hackPctPerThread)));
-        gT = Math.ceil(ns.formulas.hacking.growThreads(so, player, so.moneyMax)) + 1; // +1 de marge
-        w2T = Math.ceil(gT * 0.004 / 0.05) + 1; // +1 de marge
-        so.moneyAvailable = so.moneyMax; // restore
-        
-        wTime = wkTimeForm;
-        gTime = ns.formulas.hacking.growTime(so, player);
-        hTime = ns.formulas.hacking.hackTime(so, player);
+/** Calcul précis des threads et délais HWGW */
+function calculateHWGW(ns, target, player, hackPct, caps, RAM) {
+    const spacer = CONFIG.HACKING.BATCH_SPACING || 50;
+    let hT, w1T, gT, w2T;
 
+    if (caps.hasFormulas()) {
+        const mockServer = { ...target, hackDifficulty: target.minDifficulty };
+        hT = Math.max(1, Math.floor(hackPct / ns.formulas.hacking.hackPercent(mockServer, player)));
+        
+        mockServer.hackDifficulty += hT * 0.002;
+        w1T = Math.ceil((mockServer.hackDifficulty - target.minDifficulty) / 0.05);
+        
+        mockServer.hackDifficulty = target.minDifficulty;
+        mockServer.moneyAvailable = target.moneyMax * (1 - hackPct);
+        gT = Math.ceil(ns.formulas.hacking.growThreads(mockServer, player, target.moneyMax));
+        
+        w2T = Math.ceil((gT * 0.004) / 0.05);
     } else {
-        // FALLBACK SI FORMULAS EST ABSENT
-        const hackPct = 0.10; 
-        hT = Math.max(1, Math.floor(ns.hackAnalyzeThreads(target.hostname, target.moneyMax * hackPct)));
-        w1T = Math.ceil(ns.hackAnalyzeSecurity(hT) / 0.05) + 1; 
+        hT = Math.max(1, Math.ceil(ns.hackAnalyzeThreads(target.hostname, target.moneyMax * hackPct)));
+        w1T = Math.ceil((hT * 0.002) / 0.05) + 1;
         gT = Math.ceil(ns.growthAnalyze(target.hostname, 1 / (1 - hackPct))) + 1;
         w2T = Math.ceil(ns.growthAnalyzeSecurity(gT) / 0.05) + 1;
-
-        wTime = ns.getWeakenTime(target.hostname);
-        gTime = ns.getGrowTime(target.hostname);
-        hTime = ns.getHackTime(target.hostname);
     }
 
-    // PERFECT TIMING HWGW CALCULATION
-    let dHack = (wTime - spacer) - hTime;
-    let dWeaken1 = 0; 
-    let dGrow = (wTime + spacer) - gTime;
-    let dWeaken2 = spacer * 2; 
+    // Marges de sécurité
+    w1T += 1; gT += 2; w2T += 1;
 
-    let minDelay = Math.min(dHack, dWeaken1, dGrow, dWeaken2);
-    if (minDelay < 0) { dHack -= minDelay; dWeaken1 -= minDelay; dGrow -= minDelay; dWeaken2 -= minDelay; }
+    const wTime = caps.hasFormulas() ? ns.formulas.hacking.weakenTime(target, player) : ns.getWeakenTime(target.hostname);
+    const gTime = caps.hasFormulas() ? ns.formulas.hacking.growTime(target, player) : ns.getGrowTime(target.hostname);
+    const hTime = caps.hasFormulas() ? ns.formulas.hacking.hackTime(target, player) : ns.getHackTime(target.hostname);
 
-    const batch = [
-        { type: 'hack', t: hT, d: dHack, cost: RAM_COSTS.HACK },
-        { type: 'weaken', t: w1T, d: dWeaken1, cost: RAM_COSTS.WEAKEN },
-        { type: 'grow', t: gT, d: dGrow, cost: RAM_COSTS.GROW },
-        { type: 'weaken', t: w2T, d: dWeaken2, cost: RAM_COSTS.WEAKEN }
+    return [
+        { type: 'weaken', t: w1T, d: 0, cost: RAM.WEAKEN },
+        { type: 'hack',   t: hT,  d: wTime - spacer - hTime, cost: RAM.HACK },
+        { type: 'weaken', t: w2T, d: spacer * 2, cost: RAM.WEAKEN },
+        { type: 'grow',   t: gT,  d: wTime + spacer - gTime, cost: RAM.GROW }
     ];
+}
 
-    // On vérifie d'abord si le réseau a assez de RAM libre pour le batch ENTIER
-    let totalBatchCost = batch.reduce((sum, job) => sum + (job.t * job.cost), 0);
-    let totalFreeProfitRam = nodes.reduce((sum, node) => sum + Math.min(networkRam[node].free, Math.max(0, networkRam[node].limitProfit - networkRam[node].usedProfit)), 0);
+/** * Prépare une cible qui n'est pas encore au Max Money / Min Sec.
+ * Utilise la même logique de Slicing pour saturer le réseau de Weaken/Grow.
+ */
+async function prepTarget(ns, target, player, caps, RAM, WORKERS, net) {
+    const networkList = net.refresh().filter(h => ns.hasRootAccess(h));
+    const batch = [];
+    
+    let secDiff = target.hackDifficulty - target.minDifficulty;
+    if (secDiff > 0.1) {
+        let wThreads = Math.ceil(secDiff / 0.05);
+        batch.push({ type: 'weaken', t: wThreads, d: 0, cost: RAM.WEAKEN });
+    }
 
-    if (totalFreeProfitRam >= totalBatchCost) {
-        for (const job of batch) {
-            allocateJobFFD(ns, ph, nodes, networkRam, job.type, target.hostname, job.t, job.cost, job.d);
+    if (target.moneyAvailable < target.moneyMax * 0.95 && secDiff <= 5) {
+        let gThreads = 0;
+        if (caps.hasFormulas()) {
+            const mockServer = { ...target, hackDifficulty: target.minDifficulty };
+            gThreads = Math.ceil(ns.formulas.hacking.growThreads(mockServer, player, target.moneyMax));
+        } else {
+            let multiplier = target.moneyMax / Math.max(1, target.moneyAvailable);
+            gThreads = Math.ceil(ns.growthAnalyze(target.hostname, Math.max(1.1, multiplier)));
         }
+        
+        if (gThreads > 0) {
+            batch.push({ type: 'grow', t: gThreads, d: 0, cost: RAM.GROW });
+            // Compenser la sécurité du Grow
+            let gwThreads = Math.ceil((gThreads * 0.004) / 0.05) + 1;
+            batch.push({ type: 'weaken', t: gwThreads, d: 50, cost: RAM.WEAKEN });
+        }
+    }
+
+    if (batch.length > 0) {
+        dispatchBatchFFDSliced(ns, target.hostname, batch, networkList, WORKERS);
     }
 }
