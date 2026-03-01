@@ -17,7 +17,7 @@ export async function main(ns) {
     const GITHUB_USER   = "tylersense-ui";
     const GITHUB_REPO   = "Nexus-V50.0-PRO";
     const GITHUB_BRANCH = "main";
-    const BASE_URL = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/refs/heads/${GITHUB_BRANCH}`;
+    const BASE_URL = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${GITHUB_BRANCH}`;
 
     const FILES = {
         root: [
