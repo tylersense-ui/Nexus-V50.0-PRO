@@ -26,6 +26,7 @@ export async function main(ns) {
 
     // Liste dynamique des modules à lancer
     const modules = [
+        { name: "CONTROLLER", path: "/hack/controller.js" },
         { name: "BATCHER",    path: "/core/batcher.js" },
         { name: "DASHBOARD",  path: "/core/dashboard.js" },
         { name: "STOCK",      path: "/managers/stock-master.js" },
@@ -61,5 +62,4 @@ export async function main(ns) {
         }
         await ns.sleep(60000); // Remplacement de ns.asleep
     }
-
 }
